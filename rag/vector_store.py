@@ -39,9 +39,13 @@ def get_embedding():
     return OpenAIEmbeddings(**kwargs)
 
 
-def build_vector_db(chunks, save_path=DEFAULT_INDEX_PATH):
+def build_vector_db(chunks, save_path=DEFAULT_INDEX_PATH, ids=None):
+    """新建向量库；传入 ids 时使用稳定 ID，便于后续按文件精准删除。"""
     embeddings = get_embedding()
-    db = FAISS.from_documents(chunks, embeddings)
+    if ids is not None:
+        db = FAISS.from_documents(chunks, embeddings, ids=ids)
+    else:
+        db = FAISS.from_documents(chunks, embeddings)
     db.save_local(save_path)
     return db
 
@@ -49,4 +53,21 @@ def build_vector_db(chunks, save_path=DEFAULT_INDEX_PATH):
 def load_vector_db(save_path=DEFAULT_INDEX_PATH):
     embeddings = get_embedding()
     db = FAISS.load_local(save_path, embeddings, allow_dangerous_deserialization=True)
+    return db
+
+
+def add_to_vector_db(db, new_chunks, ids):
+    """把新块追加进已有索引，不重算旧向量；用稳定 id 便于后续删除。"""
+    db.add_documents(new_chunks, ids=ids)
+    return db
+
+
+def delete_from_vector_db(db, ids):
+    """按稳定 ID 删除某个文件的历史向量（FAISS 标记删除）。"""
+    db.delete(ids)
+    return db
+
+
+def save_vector_db(db, save_path=DEFAULT_INDEX_PATH):
+    db.save_local(save_path)
     return db
