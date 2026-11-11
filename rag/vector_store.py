@@ -11,6 +11,11 @@ load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 # 默认索引存放位置（项目根目录下的 faiss_index 文件夹）
 DEFAULT_INDEX_PATH = os.path.join(PROJECT_ROOT, "faiss_index")
 
+# 单次 embedding 请求的文本条数上限。
+# 阿里云百炼兼容端点硬限 20 条（超过直接 400 InvalidParameter），
+# 而 OpenAIEmbeddings 默认按 1000 条一批发；小语料时看不出问题，语料一变大就会报错。
+EMBEDDING_BATCH_SIZE = 20
+
 
 def get_embedding():
     """构造 Embedding（走 OpenAI 兼容接口，DeepSeek 不提供向量模型）。
@@ -32,6 +37,7 @@ def get_embedding():
         "model": model,
         # 非 OpenAI 官方端点（如通义）需关掉 tiktoken 预分词，否则报 input 类型错误
         "check_embedding_ctx_length": False,
+        "chunk_size": EMBEDDING_BATCH_SIZE,
     }
     # 只有配置了自定义端点才传入，否则默认连 OpenAI 官方
     if base_url:
