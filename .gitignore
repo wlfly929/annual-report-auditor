@@ -32,6 +32,12 @@ ENV/
 # ===== 生成的向量索引（可用代码重新生成，体积大）=====
 faiss_index/
 
+# ===== Agent 写出的研报（运行时产物）=====
+reports/
+
+# ===== 评测原始结果（生成物，报告见 evaluation/report.md）=====
+evaluation/results.json
+
 # ===== 系统/临时文件 =====
 .DS_Store
 Thumbs.db

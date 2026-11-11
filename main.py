@@ -17,7 +17,10 @@ from rag.vector_store import (
     build_vector_db, load_vector_db, save_vector_db,
     add_to_vector_db, delete_from_vector_db, DEFAULT_INDEX_PATH,
 )
-from rag.manifest import file_hash, load_manifest, save_manifest
+from rag.manifest import (
+    file_hash, index_signature, load_index_meta, load_manifest,
+    save_index_meta, save_manifest,
+)
 
 DATA_DIR = str(settings.data_dir)
 
@@ -41,6 +44,14 @@ def index_documents(force_rebuild: bool = False):
         raise FileNotFoundError(f"{DATA_DIR} 下没有找到任何 PDF 文件")
 
     index_exists = os.path.exists(os.path.join(DEFAULT_INDEX_PATH, "index.faiss"))
+
+    # 切块参数变了、PDF 却没变时，光看 manifest 会误判“索引已是最新”，
+    # 结果是改了参数却一直在用旧索引，指标看上去纹丝不动。用参数指纹兜住这个缺口。
+    signature = index_signature()
+    if index_exists and load_index_meta().get("signature") != signature:
+        if not force_rebuild:
+            print("切块/向量化参数已变更，改为全量重建索引。")
+        force_rebuild, manifest = True, {}
 
     # 需要删除的：登记过但文件已被移除（内容变化的文件哈希会变，等同于旧哈希被删除）
     to_delete = {h: info for h, info in manifest.items() if h not in current}
@@ -79,6 +90,7 @@ def index_documents(force_rebuild: bool = False):
     # 3. 持久化索引与登记簿
     save_vector_db(db)
     save_manifest(manifest)
+    save_index_meta({"signature": signature})
     print(f"更新完成，当前共登记 {len(manifest)} 个文件。")
     return db
 
