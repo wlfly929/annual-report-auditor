@@ -10,7 +10,7 @@ from .vector_store import (
     DEFAULT_INDEX_PATH,
 )
 from .manifest import file_hash, load_manifest, save_manifest
-from .chain import get_llm, build_rag_chain, ask
+from .chain import get_llm, build_rag_chain, ask, astream_answer
 
 __all__ = [
     "load_pdf",
@@ -28,4 +28,5 @@ __all__ = [
     "get_llm",
     "build_rag_chain",
     "ask",
+    "astream_answer",
 ]

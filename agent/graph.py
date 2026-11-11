@@ -28,13 +28,17 @@ STEP_LIMIT_MESSAGE = (
 )
 
 
-def build_agent(db, checkpointer=None):
+def build_agent(db, checkpointer=None, collected: list[dict] | None = None):
     """编译 Agent 图，返回 (可调用图, 引用收集列表)。
 
     checkpointer 决定多轮记忆如何保存：默认 MemorySaver 存在进程内存里，
     进程退出即丢失；后续换成 SQLite/Redis 版本即可持久化，图本身不用改。
+
+    collected 可以由调用方传入以实现跨轮累积：服务层按 session 维持一份，
+    因为追问往往不再检索、但答案仍基于上一轮取到的数，引用列表不该被清空。
+    不传则新建，对应 CLI 单轮与评测场景。
     """
-    collected: list[dict] = []
+    collected = collected if collected is not None else []
     tools = make_tools(db, collected)
     llm = get_llm(settings.llm_temperature).bind_tools(tools)
     max_steps = settings.agent_max_steps
