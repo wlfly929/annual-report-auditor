@@ -46,7 +46,7 @@ graph TD
    pip install -r requirements.txt
    ```
 
-2. 复制 `.env.example` 为 `.env`，填入密钥（`.env` 已被 gitignore，不会泄露）：
+2. 复制 `.env.example` 为 `.env`，填入密钥：
 
    | 变量 | 必填 | 说明 |
    |---|---|---|
