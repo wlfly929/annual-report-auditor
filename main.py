@@ -6,23 +6,18 @@
     python main.py --rebuild            # 强制全量重建索引
     python main.py --baseline "问题"     # 走原始固定管线 RAG，用于效果对比
 """
-import os
 import sys
 
 from agent.graph import ask as ask_agent, build_agent
 from config import settings
 from rag.chain import ask as ask_baseline
 from rag.indexer import index_documents
+from sources import dedupe_sources, docs_to_sources
 
 
 def print_sources(sources):
     """打印本轮引用来源。Agent 可能多次命中同一片段，这里按 (文件, 页码) 去重。"""
-    unique, seen = [], set()
-    for item in sources:
-        key = (item["file"], item["page"])
-        if key not in seen:
-            seen.add(key)
-            unique.append(item)
+    unique = dedupe_sources(sources)
 
     if not unique:
         print("\n—— 本轮未引用文档 ——")
@@ -31,19 +26,6 @@ def print_sources(sources):
     for i, item in enumerate(unique, start=1):
         snippet = item["snippet"].replace("\n", " ")[:80]
         print(f"[{i}] {item['file']} (第{item['page']}页): {snippet}...")
-
-
-def docs_to_sources(docs):
-    """把 LangChain Document 转成与 Agent 一致的来源结构，让两种模式共用打印逻辑。"""
-    sources = []
-    for doc in docs:
-        page = doc.metadata.get("page")
-        sources.append({
-            "file": os.path.basename(doc.metadata.get("source", "未知来源")),
-            "page": page + 1 if isinstance(page, int) else "?",
-            "snippet": doc.page_content.strip(),
-        })
-    return sources
 
 
 def answer_question(question, db, agent, collected, use_baseline):

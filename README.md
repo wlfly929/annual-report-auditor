@@ -115,6 +115,8 @@ graph TD
 | `agent/state.py` | Agent 共享状态定义 |
 | `agent/prompts.py` | Agent 系统提示词：给出决策边界而非固定路径 |
 | `config.py` | pydantic-settings 统一配置，密钥延迟校验 |
+| `llm.py` | 对话模型构造：Agent 与 baseline 共用的底层依赖，避免 agent 反向 import 对比实现 |
+| `sources.py` | 引用结构契约：`make_source` / `docs_to_sources` / `dedupe_sources`，CLI、SSE、评测共用一份 |
 | `rag/loader.py` | PyMuPDF 提取 PDF（含页眉页脚清理）并切分成 chunks；`extract_pages` 供精读复用同一套提取逻辑 |
 | `rag/vector_store.py` | 构造 Embedding；构建/加载 FAISS 库，支持稳定 ID 的增量增删（`build_vector_db`/`add_to_vector_db`/`delete_from_vector_db`/`save_vector_db`） |
 | `rag/manifest.py` | 已入库 PDF 的登记簿：内容哈希 + 索引参数指纹（改了切块参数会自动全量重建） |
@@ -127,7 +129,8 @@ graph TD
 | `evaluation/run_eval.py` | 评测执行器：同题跑 baseline 与 Agent，确定性判分，生成对照报告 |
 | `evaluation/check_questions.py` | 题库标注校验：先确认要点与页码真的对得上原文，再谈模型答得对不对 |
 | `evaluation/check_retrieval.py` | 检索层评估：不经模型，只看向量召回能拿到多少目标页与答案要点 |
-| `test_llm.py` | 连通性冒烟脚本 |
+| `scripts/smoke_test.py` | 连通性冒烟：LLM / Embedding / 检索链路；索引写临时目录，不碰正式库 |
+| `scripts/trace_agent.py` | 轨迹追踪：逐步打印 Agent 决策与工具返回；`--guard` 用假模型验证步数守卫 |
 | `faiss_index/` | 向量库持久化目录（`index.faiss` 存向量，`index.pkl` 存原文映射，`manifest.json` 存登记簿） |
 
 ## 评测结果

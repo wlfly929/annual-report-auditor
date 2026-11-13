@@ -1,12 +1,4 @@
-"""HTTP 服务层：把 Agent 与固定管线暴露成 SSE 流式接口。
-
-CLI 能证明“跑得通”，服务层才证明“交得出去”——接口契约、请求隔离、
-错误边界都在这一层暴露。
-
-流式的重点不是“答案一字一字蹦出来”，而是**过程可见**：Agent 每调用一次
-工具就推一个事件，用户能看到它在检索什么、精读哪一页、算了什么，而不是
-对着转圈干等十几秒。固定管线则先出引用、再出答案。
-
+"""
 启动：
     uvicorn api:app --reload --port 8000
     浏览器打开 http://127.0.0.1:8000
@@ -28,6 +20,7 @@ from agent.graph import build_agent
 from config import settings
 from rag.chain import astream_answer
 from rag.indexer import index_documents
+from sources import dedupe_sources, docs_to_sources
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 
@@ -81,30 +74,6 @@ def describe_tool(name: str, args: dict) -> str:
     if name == "write_report":
         return f"写报告：{args.get('title', '')}"
     return name
-
-
-def dedupe_sources(sources: list[dict]) -> list[dict]:
-    """同一片段常被多轮检索重复命中，按 (文件, 页码) 去重后再给前端。"""
-    seen, unique = set(), []
-    for item in sources:
-        key = (item["file"], item["page"])
-        if key not in seen:
-            seen.add(key)
-            unique.append(item)
-    return unique
-
-
-def docs_to_sources(docs) -> list[dict]:
-    """把 LangChain Document 转成与 Agent 一致的引用结构，前端只认一种格式。"""
-    result = []
-    for doc in docs:
-        page = doc.metadata.get("page")
-        result.append({
-            "file": Path(doc.metadata.get("source", "")).name or "未知文件",
-            "page": page + 1 if isinstance(page, int) else "?",
-            "snippet": doc.page_content.strip()[:200],
-        })
-    return result
 
 
 async def stream_baseline(question: str, db):

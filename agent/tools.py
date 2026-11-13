@@ -16,6 +16,7 @@ from langchain_core.tools import tool
 
 from config import settings
 from rag.loader import extract_pages
+from sources import make_source
 
 # 单个片段回传给模型的最大字符数，控制上下文预算
 MAX_SNIPPET_CHARS = 600
@@ -88,7 +89,7 @@ def make_tools(db, collected: list[dict]):
             source = os.path.basename(doc.metadata.get("source", "未知文件"))
             page = _human_page(doc.metadata)
             snippet = doc.page_content.strip()[:MAX_SNIPPET_CHARS]
-            collected.append({"file": source, "page": page, "snippet": snippet})
+            collected.append(make_source(source, page, snippet, max_chars=MAX_SNIPPET_CHARS))
             blocks.append(f"[片段{i}] {source} p.{page}\n{snippet}")
         return "\n\n".join(blocks)
 
@@ -125,11 +126,9 @@ def make_tools(db, collected: list[dict]):
         for page_no in range(start, end + 1):
             text = pages.get(page_no, "")
             # 精读也是来源：不记录的话，评测里的"检索覆盖"会低估 Agent 的实际取数范围
-            collected.append({
-                "file": path.name,
-                "page": page_no,
-                "snippet": text[:MAX_SNIPPET_CHARS],
-            })
+            collected.append(make_source(
+                path.name, page_no, text, max_chars=MAX_SNIPPET_CHARS
+            ))
             texts.append(f"--- {path.name} p.{page_no} ---\n{text or '(本页无可提取文本，可能是扫描件)'}")
 
         if not texts:

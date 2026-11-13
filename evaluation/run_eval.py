@@ -1,7 +1,7 @@
 """评测执行器：同一套题目分别跑 baseline（固定管线）与 Agent，输出对照表。
 
 用法：
-    python evaluation/run_eval.py                  # 全量 18 条，两种模式
+    python evaluation/run_eval.py                  # 全量 30 条，两种模式
     python evaluation/run_eval.py --limit 8        # 按类别轮流取 8 条，先验证流程
     python evaluation/run_eval.py --mode agent     # 只跑 Agent
 
@@ -27,9 +27,10 @@ from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
 from agent.graph import build_agent  # noqa: E402
 from config import settings  # noqa: E402
 from evaluation.questions import QUESTIONS  # noqa: E402
-from main import docs_to_sources, index_documents  # noqa: E402
 from rag.chain import RAG_PROMPT, get_llm  # noqa: E402
+from rag.indexer import index_documents  # noqa: E402
 from rag.loader import CHUNK_OVERLAP, CHUNK_SIZE, MIN_CHUNK_CHARS, MIN_PAGE_CHARS  # noqa: E402
+from sources import docs_to_sources  # noqa: E402
 
 REFUSAL_MARKERS = [
     # 基础否定词放最前：中文否定表达极多（没找到 / 无法回答 / 未收录…），

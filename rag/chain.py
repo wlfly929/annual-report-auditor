@@ -1,16 +1,10 @@
 import asyncio
-import os
 
-from dotenv import load_dotenv
-from langchain_deepseek import ChatDeepSeek
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 from config import settings
-
-# 基于文件位置定位项目根目录，读取 .env
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+from llm import get_llm  # 从这里再导出，保持 rag.chain.get_llm 的既有导入路径
 
 # RAG 提示词：要求模型仅根据检索到的上下文回答，减少幻觉
 RAG_PROMPT = ChatPromptTemplate.from_messages([
@@ -20,20 +14,6 @@ RAG_PROMPT = ChatPromptTemplate.from_messages([
     ("user",
      "【参考资料】\n{context}\n\n【问题】\n{question}"),
 ])
-
-
-def get_llm(temperature: float = 0.2):
-    """构造 DeepSeek 对话模型（仅用于生成回答，不用于向量）。"""
-    api_key = os.getenv("DEEPSEEK_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "未检测到 DEEPSEEK_API_KEY，请检查项目根目录 .env 是否已保存"
-        )
-    return ChatDeepSeek(
-        api_key=api_key,
-        model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
-        temperature=temperature,
-    )
 
 
 def _format_docs(docs):

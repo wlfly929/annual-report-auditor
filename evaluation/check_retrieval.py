@@ -25,7 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from evaluation.questions import QUESTIONS  # noqa: E402
 from evaluation.run_eval import normalize  # noqa: E402
-from main import index_documents  # noqa: E402
+from rag.indexer import index_documents  # noqa: E402
 from rag.loader import CHUNK_OVERLAP, CHUNK_SIZE, MIN_CHUNK_CHARS, MIN_PAGE_CHARS  # noqa: E402
 
 

@@ -1,20 +1,24 @@
 """端到端轨迹追踪：打印 Agent 每一步的决策与工具返回。
 
 用法：
-    python trace_agent.py "你的问题"     # 真实调用，查看 ReAct 轨迹
-    python trace_agent.py --guard       # 用假模型验证步数守卫（不消耗 API）
+    python scripts/trace_agent.py "你的问题"     # 真实调用，查看 ReAct 轨迹
+    python scripts/trace_agent.py --guard       # 用假模型验证步数守卫（不消耗 API）
 
 --guard 模式刻意构造一个"永远请求调用工具"的假模型，用来稳定复现
 「步数用尽 -> guard 收尾」这条分支；真实模型几乎不会自然走到这里。
 """
 import sys
+from pathlib import Path
 
-from langchain_core.messages import AIMessage, HumanMessage
+# 允许 `python scripts/trace_agent.py` 直接运行（此时 sys.path[0] 是 scripts/）
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import agent.graph as graph_mod
-from agent.graph import build_agent
-from config import settings
-from main import index_documents
+from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
+
+import agent.graph as graph_mod  # noqa: E402
+from agent.graph import build_agent  # noqa: E402
+from config import settings  # noqa: E402
+from rag.indexer import index_documents  # noqa: E402
 
 DEFAULT_QUESTION = (
     "请梳理这份简历里的项目经历和技术技能，"

@@ -20,7 +20,7 @@ from agent.prompts import SYSTEM_PROMPT
 from agent.state import AgentState
 from agent.tools import make_tools
 from config import settings
-from rag.chain import get_llm
+from llm import get_llm
 
 STEP_LIMIT_MESSAGE = (
     "我已连续推理 {n} 步仍未得到确定结论。为避免陷入无效循环，"

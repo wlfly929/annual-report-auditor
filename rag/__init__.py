@@ -1,32 +1,10 @@
-"""RAG 项目对外统一接口。"""
-from .loader import load_pdf, split_docs
-from .vector_store import (
-    get_embedding,
-    build_vector_db,
-    load_vector_db,
-    add_to_vector_db,
-    delete_from_vector_db,
-    save_vector_db,
-    DEFAULT_INDEX_PATH,
-)
-from .manifest import file_hash, load_manifest, save_manifest
-from .chain import get_llm, build_rag_chain, ask, astream_answer
+"""检索基础设施：加载、切块、向量库、增量登记簿。
 
-__all__ = [
-    "load_pdf",
-    "split_docs",
-    "get_embedding",
-    "build_vector_db",
-    "load_vector_db",
-    "add_to_vector_db",
-    "delete_from_vector_db",
-    "save_vector_db",
-    "DEFAULT_INDEX_PATH",
-    "file_hash",
-    "load_manifest",
-    "save_manifest",
-    "get_llm",
-    "build_rag_chain",
-    "ask",
-    "astream_answer",
-]
+本包刻意不依赖 agent/，可被独立复用。对外导出需要什么就直接用子模块导入：
+
+    from rag.indexer import index_documents
+    from rag.loader import extract_pages
+
+早期这里维护过一份 __all__ 聚合清单，但全项目没有一处 `from rag import ...`，
+维护清单反而成了额外负担，故移除。
+"""

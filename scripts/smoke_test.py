@@ -1,15 +1,19 @@
 """端到端冒烟测试：分别验证 LLM、Embedding、FAISS、RAG 链是否可用。
 
-运行：  python test_llm.py
+运行：  python scripts/smoke_test.py
 """
-import os
+import sys
+from pathlib import Path
 
-from rag.vector_store import get_embedding, build_vector_db, load_vector_db
-from rag.chain import get_llm, ask
-from rag.loader import load_pdf, split_docs
+# 允许 `python scripts/smoke_test.py` 直接运行（此时 sys.path[0] 是 scripts/）
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-PDF_PATH = os.path.join(PROJECT_ROOT, "data", "test.pdf")
+from rag.vector_store import get_embedding, build_vector_db, load_vector_db  # noqa: E402
+from rag.chain import get_llm, ask  # noqa: E402
+from rag.loader import load_pdf, split_docs  # noqa: E402
+
+PDF_PATH = PROJECT_ROOT / "data" / "test.pdf"
 
 
 def check_llm():
@@ -28,10 +32,10 @@ def check_embedding():
 
 def check_rag():
     print("\n[3] 测试完整 RAG 链路（检索 + 生成）...")
-    if not os.path.exists(PDF_PATH):
+    if not PDF_PATH.exists():
         print("    跳过：未找到 data/test.pdf")
         return
-    docs = load_pdf(PDF_PATH)
+    docs = load_pdf(str(PDF_PATH))
     chunks = split_docs(docs)
     build_vector_db(chunks)
     db = load_vector_db()
