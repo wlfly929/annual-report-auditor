@@ -7,6 +7,8 @@ import hashlib
 import json
 import os
 
+from config import settings
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST_PATH = os.path.join(PROJECT_ROOT, "faiss_index", "manifest.json")
 # 索引参数指纹单独存放。不能塞进 manifest：那个 dict 的每个 key 都被当作文件哈希遍历
@@ -30,7 +32,10 @@ def index_signature() -> str:
     """
     # 延迟导入：避免 manifest 与 loader 在模块层互相引用
     from rag.loader import CHUNK_OVERLAP, CHUNK_SIZE, MIN_CHUNK_CHARS, MIN_PAGE_CHARS
-    embedding = os.getenv("EMBEDDING_MODEL", "")
+    # 用 settings 而不是 os.getenv：.env 原本只在 vector_store 里 load_dotenv，
+    # 指纹会随导入顺序变化（没先导入 vector_store 就取不到模型名），
+    # 表现为“参数没改却被判定变更 → 触发全量重建”。
+    embedding = settings.embedding_model
     raw = f"{CHUNK_SIZE}|{CHUNK_OVERLAP}|{MIN_PAGE_CHARS}|{MIN_CHUNK_CHARS}|{embedding}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
