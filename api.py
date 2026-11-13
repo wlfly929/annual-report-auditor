@@ -26,15 +26,102 @@ WEB_DIR = Path(__file__).resolve().parent / "web"
 
 # 进程内会话记忆：thread_id 由前端生成（页面级 uuid），同一个 id 视为同一会话，
 # Agent 自动接续历史。单机演示够用；多实例部署换 SQLite/Redis 版 checkpointer，
-# 图本身不用改。并发写同一 session 会串历史，所以前端每次开新会话都换 id。
+# 图本身不用改。
 CHECKPOINTER = MemorySaver()
 STATE: dict = {"db": None}
+
+# ===== 会话生命周期 =====
+# 前端每开一个新页面就换一个 session_id。若只在请求时创建、从不回收，进程内存
+# 会随刷新次数单调增长：checkpointer 里存的是完整消息历史，比引用列表大一个量级。
+# 所以空闲会话必须回收，且两类资源（引用列表 / checkpoint 历史）同生共死。
+SESSION_TTL_SECONDS = 30 * 60        # 空闲 30 分钟即回收
+MAX_SESSIONS = 200                   # 兜底上限：短时间内大量新会话也不会撑爆内存
+SWEEP_INTERVAL_SECONDS = 5 * 60      # 后台巡检间隔
 
 # 会话级引用集合。追问往往不再检索（模型直接拿上一轮的数字计算），但答案仍
 # 基于上一轮取到的数，引用列表必须累积——否则答案里的页码在上文找不到出处。
 SESSION_SOURCES: dict[str, list[dict]] = {}
-# 单个会话最多保留的引用条数，防止长期运行无限增长
+# 单个会话最多保留的引用条数，防止单会话内无限增长
 MAX_SESSION_SOURCES = 200
+# 最后活跃时间 / 进行中的请求数（回收时必须跳过正在跑的会话）
+SESSION_SEEN: dict[str, float] = {}
+SESSION_ACTIVE: dict[str, int] = {}
+
+
+def release_session(session_id: str) -> None:
+    """释放一个会话占用的全部资源：引用列表 + checkpointer 里的历史。
+
+    两者必须一起删——只删引用列表的话，消息历史仍被 MemorySaver 持有，
+    泄漏的主体（逐轮累积的完整对话）根本没回收。
+    """
+    SESSION_SOURCES.pop(session_id, None)
+    SESSION_SEEN.pop(session_id, None)
+    SESSION_ACTIVE.pop(session_id, None)
+    delete = getattr(CHECKPOINTER, "delete_thread", None)
+    if delete is not None:
+        delete(session_id)
+
+
+def sweep_sessions(now: float | None = None) -> int:
+    """回收超时/超量的空闲会话，返回释放数量。
+
+    两条规则：TTL 到期全部回收；条数超过 MAX_SESSIONS 时按最久未活跃淘汰。
+    只留 TTL 不够——短时间大量刷新或批量请求同样能在 TTL 到期前把内存推高。
+    正在处理中的会话一律跳过，否则追问的引用会在流转中途被清掉。
+    """
+    now = time.time() if now is None else now
+    expired = {
+        sid for sid, seen in SESSION_SEEN.items()
+        if now - seen > SESSION_TTL_SECONDS
+    }
+    if len(SESSION_SEEN) - len(expired) > MAX_SESSIONS:
+        overflow = len(SESSION_SEEN) - len(expired) - MAX_SESSIONS
+        idle = sorted(
+            (sid for sid in SESSION_SEEN if sid not in expired),
+            key=lambda sid: SESSION_SEEN[sid],
+        )
+        expired.update(idle[:overflow])
+
+    released = 0
+    for sid in expired:
+        if SESSION_ACTIVE.get(sid):
+            continue
+        release_session(sid)
+        released += 1
+    return released
+
+
+def begin_session(session_id: str) -> list[dict]:
+    """登记一次会话活动，返回该会话的引用列表。"""
+    SESSION_SEEN[session_id] = time.time()
+    SESSION_ACTIVE[session_id] = SESSION_ACTIVE.get(session_id, 0) + 1
+    collected = SESSION_SOURCES.setdefault(session_id, [])
+    del collected[:-MAX_SESSION_SOURCES]     # 只留最近 N 条，避免单会话无限增长
+    if len(SESSION_SEEN) > MAX_SESSIONS:
+        sweep_sessions()
+    return collected
+
+
+def end_session(session_id: str) -> None:
+    """请求结束：计数归零才算真空闲，此后才能被回收。"""
+    remaining = SESSION_ACTIVE.get(session_id, 1) - 1
+    if remaining > 0:
+        SESSION_ACTIVE[session_id] = remaining
+    else:
+        SESSION_ACTIVE.pop(session_id, None)
+    SESSION_SEEN[session_id] = time.time()
+
+
+async def sweep_loop(stop: asyncio.Event) -> None:
+    """后台定时回收空闲会话；收到 stop 后退出。"""
+    while True:
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=SWEEP_INTERVAL_SECONDS)
+            return
+        except asyncio.TimeoutError:
+            released = sweep_sessions()
+            if released:
+                print(f"[sessions] 回收 {released} 个空闲会话")
 
 
 @asynccontextmanager
@@ -42,8 +129,14 @@ async def lifespan(_: FastAPI):
     # 索引加载与校验是同步阻塞的（内容变更时还会触发 embedding 请求），
     # 丢到线程里跑，避免卡住事件循环导致启动阶段连健康检查都超时
     STATE["db"] = await asyncio.to_thread(index_documents)
-    yield
-    STATE["db"] = None
+    stop = asyncio.Event()
+    sweeper = asyncio.create_task(sweep_loop(stop))
+    try:
+        yield
+    finally:
+        stop.set()
+        await sweeper
+        STATE["db"] = None
 
 
 app = FastAPI(title="文档研究 Agent", lifespan=lifespan)
@@ -85,14 +178,13 @@ async def stream_baseline(question: str, db):
             yield sse("token", {"text": payload})
 
 
-async def stream_agent(question: str, db, session_id: str, stats: dict):
+async def stream_agent(question: str, db, session_id: str, collected: list[dict], stats: dict):
     """Agent 管线：工具调用即时推送，最终答案逐 token 推送。
 
     每个请求新建一次图：图的 checkpoint 共用（靠 thread_id 隔离会话），
-    但工具闭包引用的是会话级 collected，两者要分开传。
+    但工具闭包引用的是会话级 collected，两者要分开传——collected 的生命周期
+    由 ask() 统一管理（begin_session / end_session）。
     """
-    collected = SESSION_SOURCES.setdefault(session_id, [])
-    del collected[:-MAX_SESSION_SOURCES]
     agent, collected = build_agent(db, checkpointer=CHECKPOINTER, collected=collected)
     config = {
         "configurable": {"thread_id": session_id},
@@ -171,12 +263,14 @@ async def ask(request: AskRequest):
     async def event_stream():
         started = time.perf_counter()
         stats = {"steps": 0}
+        # 只有 Agent 模式占用会话资源（引用列表 + checkpoint）；baseline 不碰
+        collected = begin_session(session_id) if mode == "agent" else None
         yield sse("meta", {"mode": mode, "session_id": session_id})
         try:
             pipeline = (
                 stream_baseline(question, db)
                 if mode == "baseline"
-                else stream_agent(question, db, session_id, stats)
+                else stream_agent(question, db, session_id, collected, stats)
             )
             async for frame in pipeline:
                 yield frame
@@ -190,6 +284,11 @@ async def ask(request: AskRequest):
             raise
         except Exception as exc:  # noqa: BLE001 - 任何异常都要变成可读的 SSE 帧
             yield sse("error", {"message": f"{type(exc).__name__}: {exc}"})
+        finally:
+            # 无论正常结束、异常还是客户端断开，都要把会话标记为空闲，
+            # 否则计数不归零，这个会话会永远躲过回收。
+            if collected is not None:
+                end_session(session_id)
 
     return StreamingResponse(
         event_stream(),
@@ -214,6 +313,8 @@ async def health():
         "max_steps": settings.agent_max_steps,
         "llm": settings.deepseek_model,
         "embedding": settings.embedding_model,
+        # 活跃会话数：用来观察空闲回收是否生效，长期运行不应单调增长
+        "sessions": len(SESSION_SEEN),
     }
 
 

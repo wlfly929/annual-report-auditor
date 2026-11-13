@@ -190,13 +190,24 @@
 
 <script>
 const state = {
-  sessionId: newId(),
+  sessionId: loadSessionId(),
   mode: "agent",
   busy: false,
 };
 
 function newId() {
   return "web-" + Math.random().toString(36).slice(2, 10);
+}
+
+function loadSessionId() {
+  // 刷新时复用同一个会话 id：否则每次刷新都会在服务端留下一份要等 TTL 才回收
+  // 的历史，多轮上下文也会丢。只有点“新会话”才主动换 id。
+  let id = sessionStorage.getItem("session_id");
+  if (!id) {
+    id = newId();
+    sessionStorage.setItem("session_id", id);
+  }
+  return id;
 }
 
 const chat = document.getElementById("chat");
@@ -230,6 +241,7 @@ document.getElementById("modes").addEventListener("click", e => {
 document.getElementById("reset").addEventListener("click", () => {
   if (state.busy) return;
   state.sessionId = newId();
+  sessionStorage.setItem("session_id", state.sessionId);
   [...chat.querySelectorAll(".qa")].forEach(el => el.remove());
   welcome.style.display = "";
   input.focus();

@@ -223,7 +223,7 @@ uvicorn api:app --reload --port 8000
 | 接口 | 说明 |
 |---|---|
 | `POST /api/ask` | SSE 流式问答，body：`{question, mode: "agent"\|"baseline", session_id?}` |
-| `GET /api/health` | 索引块数、top_k、步数上限、当前模型 |
+| `GET /api/health` | 索引块数、top_k、步数上限、当前模型、活跃会话数 |
 
 `/api/ask` 推送的事件：
 
@@ -240,4 +240,5 @@ uvicorn api:app --reload --port 8000
 两个实现上容易踩的点：
 
 - **并发隔离**：每次请求都重新 `build_agent`。工具闭包里的引用列表必须按请求私有，否则两条并发问题会把引用混在一起。会话记忆则靠共用的 `MemorySaver` + 前端传入的 `session_id` 区分。
+- **会话回收**：刷新页面复用同一个 `session_id`（`sessionStorage`），从源头减少新会话；服务端再对空闲会话按 TTL（30 分钟）回收，并设 200 条上限兑底。回收时必须同时删 `SESSION_SOURCES` 与 `MemorySaver` 里的 thread——只删前者的话，逐轮累积的消息历史仍被持有，泄漏的主体根本没回收。正在处理中的会话靠引用计数豁免，避免追问的引用在流转中途被清掉。`/api/health` 的 `sessions` 字段可用来观察是否单调增长。
 - **思考与答案分段**：模型调用工具前往往先输出一段推理，这段同样走 `token` 事件。前端收到 `tool` 事件时，把已累积的文本降级成“思考”挪进步骤区、答案区清空，这样既保留实时性，又不会让推理混进最终结论。
